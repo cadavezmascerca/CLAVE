@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Prueba de claves</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; background: #080b12; color: #f4f7ff;
+    font-family: Inter, system-ui, -apple-system, Segoe UI, sans-serif;
+    display: flex; align-items: center; justify-content: center; padding: 24px;
+  }
+  .game {
+    width: min(720px, 100%); text-align: center; padding: clamp(22px, 5vw, 48px);
+    border: 1px solid #263247; border-radius: 22px;
+    background: linear-gradient(145deg, #111827, #0b1020);
+    box-shadow: 0 24px 80px #0008; position: relative; overflow: hidden;
+  }
+  .eyebrow { color: #8fa6c8; letter-spacing: .2em; text-transform: uppercase; font-size: .75rem; }
+  h1 { font-size: clamp(1.7rem, 5vw, 2.7rem); margin: 12px 0 8px; }
+  .description { color: #aebbd0; margin: 0 auto 28px; max-width: 480px; line-height: 1.5; }
+  .status { display: flex; justify-content: space-between; gap: 12px; color: #9fb0ca; font-size: .9rem; margin-bottom: 12px; }
+  .progress { height: 6px; background: #222d40; border-radius: 99px; overflow: hidden; margin-bottom: 28px; }
+  .progress-fill { height: 100%; width: 0%; background: #62e6b5; transition: width .2s linear; }
+  .prompt-label { color: #aebbd0; font-size: .95rem; margin-bottom: 10px; }
+  .code {
+    font-size: clamp(2.8rem, 11vw, 5.5rem); font-weight: 800; letter-spacing: .12em;
+    margin: 0 0 24px; min-height: 1.25em; font-variant-numeric: tabular-nums;
+    color: #fff; text-shadow: 0 0 30px #62e6b544;
+  }
+  .input-wrap { display: flex; gap: 10px; max-width: 440px; margin: 0 auto; }
+  input {
+    min-width: 0; flex: 1; background: #080d17; border: 1px solid #35445b;
+    color: white; border-radius: 12px; padding: 16px; font-size: 1.15rem;
+    outline: none; text-align: center; letter-spacing: .08em;
+  }
+  input:focus { border-color: #62e6b5; box-shadow: 0 0 0 3px #62e6b522; }
+  button {
+    border: 0; border-radius: 12px; padding: 0 22px; font-weight: 750; font-size: 1rem;
+    color: #06110e; background: #62e6b5; cursor: pointer;
+  }
+  button:hover { filter: brightness(1.08); }
+  .timer-track { height: 5px; background: #263247; border-radius: 99px; margin: 18px auto 0; max-width: 440px; overflow: hidden; }
+  .timer-fill { height: 100%; width: 100%; background: #f6c85f; transform-origin: left; }
+  .message { min-height: 28px; margin-top: 18px; color: #f6c85f; }
+  .hidden { display: none !important; }
+  .primary { padding: 15px 25px; min-height: 50px; }
+  .result-number {
+    margin: 28px auto 8px; text-align: left; overflow-wrap: anywhere; line-height: 1.9;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: clamp(.75rem, 2vw, .95rem); color: #c5d1e4; background: #080d17;
+    border: 1px solid #263247; border-radius: 12px; padding: 18px;
+  }
+  .footer-note { margin-top: 26px; font-size: 11px; color: #77869d; line-height: 1.5; }
+  .success-mark { font-size: 3rem; color: #62e6b5; }
+</style>
+</head>
+<body>
+<main class="game">
+  <section id="intro">
+    <div class="eyebrow">Desafío de memoria y velocidad</div>
+    <h1>Prueba de claves</h1>
+    <p class="description">Aparecerá el nombre de una clave arriba. Escribe el número correspondiente antes de que pasen <strong>2 segundos</strong> para avanzar automáticamente.</p>
+    <button class="primary" id="startBtn">Iniciar juego</button>
+  </section>
+
+  <section id="play" class="hidden">
+    <div class="status"><span id="levelText">Nivel 1 de 25</span><span id="scoreText">0 completados</span></div>
+    <div class="progress"><div class="progress-fill" id="progressFill"></div></div>
+    <div class="prompt-label">Escribe el número de esta clave</div>
+    <div class="code" id="codeDisplay">Clave ---</div>
+    <div class="input-wrap">
+      <input id="answer" type="text" placeholder="Escribe el número..." autocomplete="off" autocapitalize="characters" spellcheck="false" required>
+    </div>
+    <div class="timer-track"><div class="timer-fill" id="timerFill"></div></div>
+    <div class="message" id="message" aria-live="polite"></div>
+  </section>
+
+  <section id="failed" class="hidden">
+    <div class="eyebrow">Desafío interrumpido</div>
+    <h1>Se acabó el tiempo</h1>
+    <p class="description" id="failReason">No se completó la clave a tiempo.</p>
+    <button class="primary" id="retryBtn">Volver al principio</button>
+  </section>
+
+  <section id="success" class="hidden">
+    <div class="success-mark">✓</div>
+    <div class="eyebrow">Desafío completado</div>
+    <h1>¡Logrado!</h1>
+    <p class="description">Has completado los 25 niveles.</p>
+    <div class="result-number" id="binaryMessage"></div>
+    <button class="primary" id="againBtn">Jugar de nuevo</button>
+  </section>
+</main>
+
+<script>
+(() => {
+  const KEYS = ["381", "749", "152", "904", "618", "427", "835", "296", "570", "ABC"];
+  const TOTAL_LEVELS = 25;
+  const TIME_LIMIT = 2000;
+
+  const intro = document.getElementById("intro");
+  const play = document.getElementById("play");
+  const failed = document.getElementById("failed");
+  const success = document.getElementById("success");
+  const startBtn = document.getElementById("startBtn");
+  const retryBtn = document.getElementById("retryBtn");
+  const againBtn = document.getElementById("againBtn");
+  const answer = document.getElementById("answer");
+  const codeDisplay = document.getElementById("codeDisplay");
+  const levelText = document.getElementById("levelText");
+  const scoreText = document.getElementById("scoreText");
+  const progressFill = document.getElementById("progressFill");
+  const timerFill = document.getElementById("timerFill");
+  const failReason = document.getElementById("failReason");
+  const binaryMessage = document.getElementById("binaryMessage");
+
+  let sequence = [];
+  let level = 0;
+  let deadline = 0;
+  let timerFrame = null;
+  let active = false;
+  let roundToken = 0;
+
+  function show(section) {
+    [intro, play, failed, success].forEach(el => el.classList.add("hidden"));
+    section.classList.remove("hidden");
+  }
+
+  function stopTimer() {
+    active = false;
+    roundToken++;
+    if (timerFrame !== null) cancelAnimationFrame(timerFrame);
+    timerFrame = null;
+  }
+
+  function startGame() {
+    stopTimer();
+    sequence = [];
+    while (sequence.length < TOTAL_LEVELS) {
+      sequence.push(KEYS[Math.floor(Math.random() * KEYS.length)]);
+    }
+    level = 0;
+    show(play);
+    nextRound();
+  }
+
+  function nextRound() {
+    if (level >= TOTAL_LEVELS) {
+      stopTimer();
+      obtenerPremioFinal();
+      return;
+    }
+    const token = ++roundToken;
+    active = true;
+    const currentKey = sequence[level];
+    levelText.textContent = `Nivel ${level + 1} de ${TOTAL_LEVELS}`;
+    scoreText.textContent = `${level} completados`;
+    progressFill.style.width = `${(level / TOTAL_LEVELS) * 100}%`;
+    codeDisplay.textContent = `Clave ${currentKey}`;
+    answer.value = "";
+    deadline = performance.now() + TIME_LIMIT;
+    timerFill.style.width = "100%";
+    answer.focus({ preventScroll: true });
+
+    function tick(now) {
+      if (!active || token !== roundToken) return;
+      const remaining = Math.max(0, deadline - now);
+      timerFill.style.width = `${(remaining / TIME_LIMIT) * 100}%`;
+      if (remaining <= 0) {
+        fail("Se agotaron los 2 segundos.");
+        return;
+      }
+      timerFrame = requestAnimationFrame(tick);
+    }
+    timerFrame = requestAnimationFrame(tick);
+  }
+
+  function fail(reason) {
+    stopTimer();
+    failReason.textContent = `${reason} Debes comenzar desde el nivel 1.`;
+    show(failed);
+  }
+
+  async function obtenerPremioFinal() {
+    try {
+      const res = await fetch('/api/validar?action=win');
+      const data = await res.json();
+      binaryMessage.textContent = data.msg;
+      show(success);
+    } catch (e) {
+      binaryMessage.textContent = "Error al obtener el mensaje final.";
+      show(success);
+    }
+  }
+
+  answer.addEventListener("input", async () => {
+    if (!active) return;
+    if (performance.now() > deadline) {
+      fail("Se agotaron los 2 segundos.");
+      return;
+    }
+
+    const val = answer.value.trim();
+    const currentKey = sequence[level];
+
+    // Si escribe 1 o más caracteres, consultamos al servidor de forma segura
+    if (val.length > 0) {
+      try {
+        const response = await fetch('/api/validar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key: currentKey, guess: val })
+        });
+        const data = await response.json();
+
+        if (!active) return;
+
+        if (data.correct) {
+          stopTimer();
+          level++;
+          nextRound();
+        } else if (val.length >= 3) {
+          fail("El número introducido no es correcto.");
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    }
+  });
+
+  startBtn.addEventListener("click", startGame);
+  retryBtn.addEventListener("click", startGame);
+  againBtn.addEventListener("click", startGame);
+})();
+</script>
+</body>
+</html>
